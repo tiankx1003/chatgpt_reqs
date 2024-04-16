@@ -38,6 +38,11 @@ repo_gpgcheck=0
 gpgkey=https://mirrors.aliyun.com/kubernetes/yum/doc/yum-key.gpg https://mirrors.aliyun.com/kubernetes/yum/doc/rpm-package-key.gpg
 EOF
 
+# Ubuntu2004
+echo "deb https://mirrors.aliyun.com/kubernetes/apt kubernetes-xenial main" >> /etc/apt/sources.list
+curl -s https://mirrors.aliyun.com/kubernetes/apt/doc/apt-key.gpg | sudo apt-key add -
+
+
 # 关闭swap
 swapoff -a
 sed -ri 's/.*swap.*/#&/' /etc/fstab
@@ -98,6 +103,14 @@ kubeadm init \
   --kubernetes-version v1.21.9 \
   --service-cidr=10.96.0.0/12 \
   --pod-network-cidr=10.244.0.0/16
+# ubuntu2004
+kubeadm init \
+  --ignore-preflight-errors=ImagePull \
+  --apiserver-advertise-address=192.168.3.9 \
+  --image-repository=registry.aliyuncs.com/google_containers \
+  --kubernetes-version v1.28.2 \
+  --service-cidr=10.96.0.0/12 \
+  --pod-network-cidr=10.244.0.0/16
 
 mkdir -p $HOME/.kube
 sudo cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
@@ -108,10 +121,12 @@ kubeadm token create --print-join-command
 
 kubectl apply -f https://raw.githubusercontent.com/coreos/flannel/master/Documentation/kube-flannel.yml
 
-kubectl create deployment nginx --image=nginx
+kubectl create deployment nginx --image=nginx --image-repository=registry.aliyuncs.com/google_containers
 kubectl expose deployment nginx --port=80 --type=NodePort
-kubectl get pod,svc
+kubectl get node,pod,svc,deployment -A
 
+kubectl taint nodes --all node-role.kubernetes.io/control-plane-
+kubectl taint nodes master-node node-role.kubernetes.io/master-
 
 #curl -O "http://melina/k8s.zip" && unzip k8s.zip
 #sh install.sh
