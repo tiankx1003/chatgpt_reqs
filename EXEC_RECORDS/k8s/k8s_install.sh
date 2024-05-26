@@ -4,7 +4,7 @@ echo "export LC_ALL=en_US.UTF-8" >> /etc/profile
 echo "export LC_CTYPE=en_US.UTF-8" >> /etc/profile
 source /etc/profile
 
-# vim /etc/default/grub
+# vi /etc/default/grub
 # grub2-mkconfig -o /boot/grub2/grub.cfg
 # vi /etc/sysconfig/network-scripts/ifcfg-ens32
 
@@ -15,6 +15,7 @@ curl -o /etc/yum.repos.d/CentOS-Base.repo http://mirrors.aliyun.com/repo/Centos-
 yum upgrade -y && yum update -y
 yum install -y device-mapper-persistent-data git glibc-langpack-en ipset ipset ipvsadm ipvsadm libaio lvm2 net-tools ntp ntp-doc ntpdate openssh openssh-clients rsync tar telnet unzip vim wget yum-utils zip
 
+sudo systemctl enable ntpd
 timedatectl list-timezones
 ntpdate time.windows.com
 timedatectl status
@@ -24,8 +25,15 @@ date
 yum remove -y docker docker-client docker-client-latest docker-common docker-latest docker-latest-logrotate docker-logrotate docker-engine
 yum-config-manager --add-repo http://mirrors.aliyun.com/docker-ce/linux/centos/docker-ce.repo
 yum -y install docker-ce docker-ce-cli containerd.io
+
+
 systemctl enable docker
-systemctl start docker
+sudo tee /etc/docker/daemon.json <<-'EOF'
+{
+  "registry-mirrors": ["https://nyqfi8o7.mirror.aliyuncs.com"]
+}
+EOF
+systemctl restart docker
 
 # k8s yum repo
 cat > /etc/yum.repos.d/kubernetes.repo << EOF
@@ -46,7 +54,7 @@ curl -s https://mirrors.aliyun.com/kubernetes/apt/doc/apt-key.gpg | sudo apt-key
 # 关闭swap
 swapoff -a
 sed -ri 's/.*swap.*/#&/' /etc/fstab
-cat > /etc/sysctl.conf << EOF
+cat >> /etc/sysctl.conf << EOF
 vm.swappiness=0
 EOF
 # 生效
@@ -91,14 +99,21 @@ cat > /etc/hosts << EOF
 192.168.2.211 k8s01
 192.168.2.212 k8s02
 192.168.2.213 k8s03
+192.168.2.100 k100
+192.168.2.101 k101
+192.168.2.102 k102
+192.168.2.103 k103
 EOF
 
+yum remove -y kubelet-1.21.9 kubeadm-1.21.9 kubectl-1.21.9
+yum remove -y kubelet kubeadm kubectl
 yum install -y kubelet-1.21.9 kubeadm-1.21.9 kubectl-1.21.9
 systemctl enable kubelet
 
+kubeadm reset -f
 kubeadm init \
   --ignore-preflight-errors=ImagePull \
-  --apiserver-advertise-address=192.168.2.211 \
+  --apiserver-advertise-address=192.168.2.254 \
   --image-repository=registry.aliyuncs.com/google_containers \
   --kubernetes-version v1.21.9 \
   --service-cidr=10.96.0.0/12 \
@@ -117,11 +132,15 @@ sudo cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
 sudo chown $(id -u):$(id -g) $HOME/.kube/config
 export KUBECONFIG=/etc/kubernetes/admin.conf
 
+kubectl drain k102 --delete-emptydir-data --force --ignore-daemonsets
+kubectl delete node k102
 kubeadm token create --print-join-command
 
 kubectl apply -f https://raw.githubusercontent.com/coreos/flannel/master/Documentation/kube-flannel.yml
+kubectl apply -f kube-flannel.yml
 
-kubectl create deployment nginx --image=nginx --image-repository=registry.aliyuncs.com/google_containers
+kubectl create deployment nginx --image=registry.aliyuncs.com/google_containers/nginx
+kubectl create deployment nginx --image=nginx
 kubectl expose deployment nginx --port=80 --type=NodePort
 kubectl get node,pod,svc,deployment -A
 
