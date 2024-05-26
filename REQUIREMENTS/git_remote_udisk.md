@@ -1,0 +1,1 @@
+in windows system, i have clone a git repository from github in local directory 'D:\git_repo\paimon', how add a git remote at udisk directory and push all branch to it 
